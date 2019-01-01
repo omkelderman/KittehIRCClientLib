@@ -45,6 +45,7 @@ import org.kitteh.irc.client.library.element.mode.ModeStatusList;
 import org.kitteh.irc.client.library.element.mode.UserMode;
 import org.kitteh.irc.client.library.event.client.ClientReceiveCommandEvent;
 import org.kitteh.irc.client.library.event.client.ClientReceiveNumericEvent;
+import org.kitteh.irc.client.library.event.helper.ClientReceiveServerMessageEvent;
 import org.kitteh.irc.client.library.exception.KittehNagException;
 import org.kitteh.irc.client.library.exception.KittehServerMessageException;
 import org.kitteh.irc.client.library.exception.KittehServerMessageTagException;
@@ -169,6 +170,7 @@ public class DefaultClient implements Client.WithManagement {
     private final String[] pingPurr = new String[]{"MEOW", "MEOW!", "PURR", "PURRRRRRR", "MEOWMEOW", ":3", "HISS"};
     private int pingPurrCount;
 
+    private final HashMap<String, List<ClientReceiveServerMessageEvent>> batchHold = new HashMap<>();
     private final InputProcessor processor;
     private ServerInfo.WithManagement serverInfo;
 
@@ -875,7 +877,7 @@ public class DefaultClient implements Client.WithManagement {
         final Actor actor = this.actorTracker.getActor(actorName);
 
         String commandString = null;
-        List<String> args = new ArrayList<>();
+        List<String> parameters = new ArrayList<>();
 
         boolean dobbyIsFreeElf = false;
         free:
@@ -890,7 +892,7 @@ public class DefaultClient implements Client.WithManagement {
                 if (commandString == null) {
                     commandString = bit;
                 } else {
-                    args.add(bit);
+                    parameters.add(bit);
                 }
             }
             position = next + 1;
@@ -900,7 +902,7 @@ public class DefaultClient implements Client.WithManagement {
             if (commandString == null) {
                 commandString = bit;
             } else {
-                args.add(bit);
+                parameters.add(bit);
             }
         }
 
@@ -908,12 +910,49 @@ public class DefaultClient implements Client.WithManagement {
             throw new KittehServerMessageException(new DefaultServerMessage(line, tags), "Server sent a message without a command");
         }
 
+        ClientReceiveServerMessageEvent event;
         try {
             int numeric = Integer.parseInt(commandString);
-            this.eventManager.callEvent(new ClientReceiveNumericEvent(this, new DefaultServerMessage.NumericCommand(numeric, line, tags), actor, commandString, numeric, args));
+            event = new ClientReceiveNumericEvent(this, new DefaultServerMessage.NumericCommand(numeric, line, tags), actor, commandString, numeric, parameters);
         } catch (NumberFormatException exception) {
-            this.eventManager.callEvent(new ClientReceiveCommandEvent(this, new DefaultServerMessage.StringCommand(commandString, line, tags), actor, commandString, args));
+            event = new ClientReceiveCommandEvent(this, new DefaultServerMessage.StringCommand(commandString, line, tags), actor, commandString, parameters);
         }
+
+        Optional<MessageTag> batchTag = tags.stream().filter(tag -> "batch".equalsIgnoreCase(tag.getName())).findFirst();
+        if (batchTag.isPresent() && batchTag.get().getValue().isPresent()) {
+            String batch = batchTag.get().getValue().get();
+            if (this.batchHold.containsKey(batch)) {
+                this.batchHold.get(batch).add(event);
+                return;
+            }
+            // else improper batch
+        }
+
+        this.sendLineEvent(event);
+    }
+
+    private void sendLineEvent(@NonNull ClientReceiveServerMessageEvent event) {
+        onThroughToTheOtherSide:
+        if ("BATCH".equalsIgnoreCase(event.getCommand())) {
+            if (event.getParameters().isEmpty() || (event.getParameters().get(0).length() < 2)) {
+                // TODO whine about no parameters
+                // Tried to run, tried to hide,
+                break onThroughToTheOtherSide;
+            }
+            char plusOrMinus = event.getParameters().get(1).charAt(0);
+            String refTag = event.getParameters().get(1).substring(1);
+            if (plusOrMinus == '+') {
+                // TODO get other parameters out of it and call event
+                this.batchHold.put(refTag, new ArrayList<>());
+            } else if (plusOrMinus == '-') {
+                // TODO event
+                this.batchHold.remove(refTag).forEach(this::sendLineEvent);
+            } else {
+                // TODO whine about no plus or minus
+            }
+        }
+
+        this.eventManager.callEvent(event);
     }
 
     @Override

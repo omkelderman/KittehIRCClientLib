@@ -48,9 +48,9 @@ public class ClientReceiveCommandEvent extends ClientReceiveServerMessageEventBa
      * @param serverMessage server message
      * @param actor actor
      * @param command command
-     * @param args args
+     * @param parameters parameters
      */
-    public ClientReceiveCommandEvent(@NonNull Client client, @NonNull ServerMessage serverMessage, @NonNull Actor actor, @NonNull String command, @NonNull List<String> args) {
-        super(client, serverMessage, actor, command, args);
+    public ClientReceiveCommandEvent(@NonNull Client client, @NonNull ServerMessage serverMessage, @NonNull Actor actor, @NonNull String command, @NonNull List<String> parameters) {
+        super(client, serverMessage, actor, command, parameters);
     }
 }
