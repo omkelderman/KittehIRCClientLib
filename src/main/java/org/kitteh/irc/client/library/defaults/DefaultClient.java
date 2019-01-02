@@ -879,12 +879,12 @@ public class DefaultClient implements Client.WithManagement {
         String commandString = null;
         List<String> parameters = new ArrayList<>();
 
-        boolean dobbyIsFreeElf = false;
+        boolean parameterHadColon = false;
         free:
         while ((next = line.indexOf(' ', position)) != -1) {
             if (line.charAt(position) == ':') {
                 position++;
-                dobbyIsFreeElf = true;
+                parameterHadColon = true;
                 /* I've got to */
                 break free;
             } else if (position != next) {
@@ -898,7 +898,7 @@ public class DefaultClient implements Client.WithManagement {
             position = next + 1;
         }
         if (position != line.length()) {
-            String bit = line.substring((!dobbyIsFreeElf && (line.charAt(position) == ':')) ? (position + 1) : position);
+            String bit = line.substring((!parameterHadColon && (line.charAt(position) == ':')) ? (position + 1) : position);
             if (commandString == null) {
                 commandString = bit;
             } else {
