@@ -921,8 +921,9 @@ public class DefaultClient implements Client.WithManagement {
         Optional<MessageTag> batchTag = tags.stream().filter(tag -> "batch".equalsIgnoreCase(tag.getName())).findFirst();
         if (batchTag.isPresent() && batchTag.get().getValue().isPresent()) {
             String batch = batchTag.get().getValue().get();
-            if (this.batchHold.containsKey(batch)) {
-                this.batchHold.get(batch).add(event);
+            List<ClientReceiveServerMessageEvent> events = this.batchHold.get(batch);
+            if (events != null) {
+                events.add(event);
                 return;
             }
             // else improper batch
@@ -946,7 +947,10 @@ public class DefaultClient implements Client.WithManagement {
                 this.batchHold.put(refTag, new ArrayList<>());
             } else if (plusOrMinus == '-') {
                 // TODO event
-                this.batchHold.remove(refTag).forEach(this::sendLineEvent);
+                List<ClientReceiveServerMessageEvent> events = this.batchHold.remove(refTag);
+                if (events != null) {
+                    events.forEach(this::sendLineEvent);
+                }
             } else {
                 // TODO whine about no plus or minus
             }
