@@ -927,6 +927,7 @@ public class DefaultClient implements Client.WithManagement {
             BatchReferenceTag tag = this.batchHold.get(batch);
             if (tag != null) {
                 tag.addEvent(event);
+                // TODO consider firing an event here
                 return;
             }
             // else improper batch
@@ -949,6 +950,7 @@ public class DefaultClient implements Client.WithManagement {
             if (plusOrMinus == '+') {
                 if (event.getParameters().size() < 2) {
                     // TODO whine about missing type
+                    // But can you still recall, the time we cried
                     break onThroughToTheOtherSide;
                 }
                 String type = parameters.get(1);
