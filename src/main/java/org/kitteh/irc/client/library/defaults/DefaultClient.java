@@ -918,7 +918,7 @@ public class DefaultClient implements Client.WithManagement {
             event = new ClientReceiveCommandEvent(this, new DefaultServerMessage.StringCommand(commandString, line, tags), actor, commandString, parameters);
         }
 
-        Optional<MessageTag> batchTag = tags.stream().filter(tag -> "batch".equalsIgnoreCase(tag.getName())).findFirst();
+        Optional<MessageTag> batchTag = tags.stream().filter(tag -> CapabilityManager.Defaults.BATCH.equalsIgnoreCase(tag.getName())).findFirst();
         if (batchTag.isPresent() && batchTag.get().getValue().isPresent()) {
             String batch = batchTag.get().getValue().get();
             List<ClientReceiveServerMessageEvent> events = this.batchHold.get(batch);
@@ -934,7 +934,7 @@ public class DefaultClient implements Client.WithManagement {
 
     private void sendLineEvent(@NonNull ClientReceiveServerMessageEvent event) {
         onThroughToTheOtherSide:
-        if ("BATCH".equalsIgnoreCase(event.getCommand())) {
+        if (CapabilityManager.Defaults.BATCH.equalsIgnoreCase(event.getCommand())) {
             if (event.getParameters().isEmpty() || (event.getParameters().get(0).length() < 2)) {
                 // TODO whine about no parameters
                 // Tried to run, tried to hide,
