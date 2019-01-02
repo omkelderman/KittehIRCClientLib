@@ -43,6 +43,8 @@ import org.kitteh.irc.client.library.element.User;
 import org.kitteh.irc.client.library.element.mode.ModeStatus;
 import org.kitteh.irc.client.library.element.mode.ModeStatusList;
 import org.kitteh.irc.client.library.element.mode.UserMode;
+import org.kitteh.irc.client.library.event.client.ClientBatchEndEvent;
+import org.kitteh.irc.client.library.event.client.ClientBatchStartEvent;
 import org.kitteh.irc.client.library.event.client.ClientReceiveCommandEvent;
 import org.kitteh.irc.client.library.event.client.ClientReceiveNumericEvent;
 import org.kitteh.irc.client.library.event.helper.ClientReceiveServerMessageEvent;
@@ -66,6 +68,7 @@ import org.kitteh.irc.client.library.feature.sts.MemoryStsMachine;
 import org.kitteh.irc.client.library.feature.sts.StsHandler;
 import org.kitteh.irc.client.library.feature.sts.StsMachine;
 import org.kitteh.irc.client.library.feature.sts.StsStorageManager;
+import org.kitteh.irc.client.library.util.BatchReferenceTag;
 import org.kitteh.irc.client.library.util.CISet;
 import org.kitteh.irc.client.library.util.CtcpUtil;
 import org.kitteh.irc.client.library.util.Cutter;
@@ -170,7 +173,7 @@ public class DefaultClient implements Client.WithManagement {
     private final String[] pingPurr = new String[]{"MEOW", "MEOW!", "PURR", "PURRRRRRR", "MEOWMEOW", ":3", "HISS"};
     private int pingPurrCount;
 
-    private final HashMap<String, List<ClientReceiveServerMessageEvent>> batchHold = new HashMap<>();
+    private final HashMap<String, BatchReferenceTag> batchHold = new HashMap<>();
     private final InputProcessor processor;
     private ServerInfo.WithManagement serverInfo;
 
@@ -921,9 +924,9 @@ public class DefaultClient implements Client.WithManagement {
         Optional<MessageTag> batchTag = tags.stream().filter(tag -> CapabilityManager.Defaults.BATCH.equalsIgnoreCase(tag.getName())).findFirst();
         if (batchTag.isPresent() && batchTag.get().getValue().isPresent()) {
             String batch = batchTag.get().getValue().get();
-            List<ClientReceiveServerMessageEvent> events = this.batchHold.get(batch);
-            if (events != null) {
-                events.add(event);
+            BatchReferenceTag tag = this.batchHold.get(batch);
+            if (tag != null) {
+                tag.addEvent(event);
                 return;
             }
             // else improper batch
@@ -933,24 +936,36 @@ public class DefaultClient implements Client.WithManagement {
     }
 
     private void sendLineEvent(@NonNull ClientReceiveServerMessageEvent event) {
+        List<String> parameters = event.getParameters();
         onThroughToTheOtherSide:
         if (CapabilityManager.Defaults.BATCH.equalsIgnoreCase(event.getCommand())) {
-            if (event.getParameters().isEmpty() || (event.getParameters().get(0).length() < 2)) {
+            if (parameters.isEmpty() || (parameters.get(0).length() < 2)) {
                 // TODO whine about no parameters
                 // Tried to run, tried to hide,
                 break onThroughToTheOtherSide;
             }
-            char plusOrMinus = event.getParameters().get(1).charAt(0);
-            String refTag = event.getParameters().get(1).substring(1);
+            char plusOrMinus = parameters.get(0).charAt(0);
+            String refTag = parameters.get(0).substring(1);
             if (plusOrMinus == '+') {
-                // TODO get other parameters out of it and call event
-                this.batchHold.put(refTag, new ArrayList<>());
-            } else if (plusOrMinus == '-') {
-                // TODO event
-                List<ClientReceiveServerMessageEvent> events = this.batchHold.remove(refTag);
-                if (events != null) {
-                    events.forEach(this::sendLineEvent);
+                if (event.getParameters().size() < 2) {
+                    // TODO whine about missing type
+                    break onThroughToTheOtherSide;
                 }
+                String type = parameters.get(1);
+                List<String> batchParameters = new ArrayList<>(parameters.subList(2, parameters.size()));
+                BatchReferenceTag tag = new BatchReferenceTag(refTag, type, batchParameters);
+                ClientBatchStartEvent batchEvent = new ClientBatchStartEvent(this, event.getOriginalMessages(), tag);
+                this.eventManager.callEvent(batchEvent);
+                if (!batchEvent.isReferenceTagIgnored()) {
+                    this.batchHold.put(refTag, tag);
+                }
+            } else if (plusOrMinus == '-') {
+                BatchReferenceTag tag = this.batchHold.remove(refTag);
+                if (tag != null) {
+                    this.eventManager.callEvent(new ClientBatchEndEvent(this, event.getOriginalMessages(), tag));
+                    tag.getEvents().forEach(this::sendLineEvent);
+                }
+                // TODO whine about unknown reference tag
             } else {
                 // TODO whine about no plus or minus
             }
